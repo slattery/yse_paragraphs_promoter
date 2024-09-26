@@ -1,0 +1,155 @@
+<?php
+
+use Drupal\Component\Utility\Html;
+use Drupal\Core\Entity\EntityInterface;
+use Drupal\Core\Form\FormStateInterface;
+use Drupal\Core\Render\BubbleableMetadata;
+use Drupal\Core\Routing\RouteMatchInterface;
+use Drupal\Core\Url;
+use Drupal\field\Entity\FieldConfig;
+use Drupal\paragraphs\Entity\Paragraph;
+use Drupal\paragraphs\ParagraphInterface;
+use Drupal\paragraphs\ParagraphsTypeInterface;
+
+/**
+ * Implements hook_help().
+ */
+function yse_paragraphs_promoter_help($route_name, RouteMatchInterface $route_match) {
+  if ($route_name == 'help.page.yse_paragraphs_promoter') {
+    $text = file_get_contents(__DIR__ . '/README.md');
+    if (!Drupal::moduleHandler()->moduleExists('markdown')) {
+      return '<pre>' . $text . '</pre>';
+    }
+    else {
+      /** @var \Drupal\markdown\PluginManager\ParserManagerInterface $parser_manager */
+      $parser_manager = \Drupal::service('plugin.manager.markdown.parser');
+      $parser = $parser_manager->getDefaultParser([
+        'render_strategy' => ['type' => 'none'],
+      ]);
+      return $parser->parse($text);
+    }
+  }
+  return NULL;
+}
+
+
+/**
+ * Implements hook_config_schema_info_alter().
+ */
+function yse_paragraphs_promoter_config_schema_info_alter(&$definitions) {
+  $definitions['paragraphs.paragraphs_type.*.third_party.paragraphs_library']['mapping']['create_reusableitem_node'] = [
+    'type' => 'boolean',
+    'label' => 'Create a ResuableItem node when promoting to a library item.',
+  ];
+}
+
+function yse_paragraphs_promoter_form_paragraphs_type_form_alter(&$form, FormStateInterface $form_state) {
+  // Adds paragraph type grouping to the form.
+  /** @var \Drupal\paragraphs\ParagraphsTypeInterface $paragraph_type */
+  $paragraph_type = $form_state->getFormObject()->getEntity();
+  if ($paragraph_type->id() != 'from_library') {
+    $form['create_reusableitem_node'] = [
+      '#type' => 'checkbox',
+      '#title' => t('Create a ResuableItem node when promoting to a library item'),
+      '#default_value' => $paragraph_type->getThirdPartySetting('paragraphs_library', 'create_reusableitem_node', FALSE),
+      '#states' => [
+        'enabled' => [':input[name="allow_library_conversion"]' => ['checked' => TRUE]],
+        'unchecked' => [':input[name="allow_library_conversion"]' => ['unchecked' => TRUE]]
+      ],
+    ];
+    $form['#entity_builders'][] = 'yse_paragraphs_promoter_form_paragraphs_type_form_builder';
+    //TODO control/sync the types available to the yse_reusable_item field config.  Right now it is any.
+  }
+}
+
+/**
+ * Add node creation setting to work with the library items promotion setting.
+ *
+ */
+function yse_paragraphs_promoter_form_paragraphs_type_form_builder($entity_type, ParagraphsTypeInterface $type, &$form, FormStateInterface $form_state) {
+  if ($form_state->getValue('create_reusableitem_node')) {
+    $type->setThirdPartySetting('paragraphs_library', 'create_reusableitem_node', $form_state->getValue('create_reusableitem_node'));
+  }
+  else {
+    $type->unsetThirdPartySetting('paragraphs_library', 'create_reusableitem_node');
+  }
+}
+
+
+
+function yse_paragraphs_promoter_paragraphs_library_item_predelete(EntityInterface $library_item) {
+
+  $nids = array_values(
+    \Drupal::entityQuery('node')->accessCheck(FALSE)
+    ->condition('status', 1)->condition('type', 'yse_feature_store')
+    ->condition('field_stored_feature_set.entity:paragraph.field_reusable_paragraph.entity:paragraphs_library_item.id', $library_item->id())
+    ->execute());
+
+  foreach ($nids as $nid){
+    $storage = \Drupal::entityTypeManager()->getStorage('node');
+    $entity = $storage->load($nid);
+    if ($entity->isPublished()) {
+      $t = $entity->label();
+      $entity->setUnpublished();
+      $entity->save();
+      \Drupal::service('messenger')->addMessage("Library Item Deleted, Node '{$t}' ({$nid}) has been unpublished.");
+    }
+  }
+}
+
+function yse_libraryitem_override_paragraphs_library_item_insert(EntityInterface $library_item) {
+  // Check that this paragraph type wants a ResuableItem node via getThirdPartySetting
+  // $library_item->paragraphs->entity
+  $mamatype = $library_item->paragraphs->entity->get('parent_type')->value;
+  $itemtype = $library_item->paragraphs->entity->getType();
+  $makenode = $library_item->paragraphs->entity->getParagraphType()->getThirdPartySetting('paragraphs_library', 'create_reusableitem_node', FALSE);
+
+  //check to see that this para type allows node creation
+  if (!isset($makenode)){
+    return;
+  }
+
+  //check receiving node type for parent bundle match on the promoter entity_reference field
+  $node_fielddefs = \Drupal::service('entity_field.manager')->getFieldDefinitions('node', 'yse_resuable_item');
+  if (isset($node_fielddefs['field_promoter_nref'])) {
+    $handler_settings = $node_fielddefs['field_promoter_nref']->getSetting('handler_settings');
+    $target_bundles = array_values($handler_settings['target_bundles'])
+  }
+  if (in_array($target_bundles, $mamatype)){
+
+    // Get the alias of the referer, should be like node/6286/edit
+    // hopefully fails silently when libitem is created from the 'Add new' button under Content
+    $referer = \Drupal::request()->headers->get('referer');
+
+    $promoter = false;
+    $alias = parse_url($referer, PHP_URL_PATH);
+
+    if (!empty($alias)) {
+      $url = Url::fromUri('internal:' . $alias);
+      $promoter = $url->getRouteParameters()['node'];
+    }
+    //TEST try to load when isNew, see if we get type...
+
+    //do we need to enforce a label w mapping?
+    $paranode = \Drupal::entityTypeManager()->getStorage('node')->create(
+      [
+        'type' => 'yse_reusable_item',
+        'title' => $library_item->label(),
+      ]
+    );
+    $paragraph_item = Paragraph::create([
+        'type' => 'from_library',
+        'field_reusable_paragraph' => $library_item,
+    ]);
+
+    $paranode->field_reusable_paragraph->appendItem($paragraph_item);
+    $paranode->field_promoter_nref->setValue($promoter);
+    $paranode->save();
+    \Drupal::service('messenger')->addMessage("Library item promoted, a new node has been created to use in reference fields.");
+  }
+  else {
+    \Drupal::service('messenger')->addWarning("Library item promoted, no node has been created, parent node type {$mamatype} not supported on the Promoter field of the Reusable Item node type.");
+  }
+}
+
+

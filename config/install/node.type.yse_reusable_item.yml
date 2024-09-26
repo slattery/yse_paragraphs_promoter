@@ -1,0 +1,17 @@
+uuid: 8293b62f-df41-405a-b952-0e7a79ab9c74
+langcode: en
+status: true
+dependencies:
+  module:
+    - menu_ui
+third_party_settings:
+  menu_ui:
+    available_menus: {  }
+    parent: ''
+name: 'Reusable Item'
+type: yse_reusable_item
+description: 'A node wrapper that allows a paragraph (or block in future) to operate in a Content context for entity references.'
+help: null
+new_revision: false
+preview_mode: 1
+display_submitted: false

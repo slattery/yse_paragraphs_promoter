@@ -1,0 +1,6 @@
+{
+  "name": "slattery/yse_paragraphs_promoter",
+  "description": "Pair paragraphs libraryitems with a dedicated node for use in Content contexts.",
+  "type": "drupal-custom-module",
+  "license": "GPL-2.0-or-later"
+}
