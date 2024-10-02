@@ -1,0 +1,42 @@
+uuid: 6bf9f7c4-ce75-4403-ae39-9088dbe5a034
+langcode: en
+status: true
+dependencies:
+  config:
+    - field.field.node.yse_reusable_item.body
+    - field.field.node.yse_reusable_item.field_promoter_nref
+    - field.field.node.yse_reusable_item.field_reusable_paragraph
+    - node.type.yse_reusable_item
+  module:
+    - entity_reference_revisions
+    - user
+id: node.yse_reusable_item.default
+targetEntityType: node
+bundle: yse_reusable_item
+mode: default
+content:
+  field_promoter_nref:
+    type: entity_reference_entity_id
+    label: hidden
+    settings: {  }
+    third_party_settings: {  }
+    weight: 2
+    region: content
+  field_reusable_paragraph:
+    type: entity_reference_revisions_entity_view
+    label: hidden
+    settings:
+      view_mode: default
+      link: ''
+    third_party_settings: {  }
+    weight: 1
+    region: content
+  links:
+    settings: {  }
+    third_party_settings: {  }
+    weight: 0
+    region: content
+hidden:
+  body: true
+  langcode: true
+  search_api_excerpt: true

@@ -54,7 +54,6 @@ function yse_paragraphs_promoter_form_paragraphs_type_form_alter(&$form, FormSta
       '#default_value' => $paragraph_type->getThirdPartySetting('paragraphs_library', 'create_reusableitem_node', FALSE),
       '#states' => [
         'enabled' => [':input[name="allow_library_conversion"]' => ['checked' => TRUE]],
-        'unchecked' => [':input[name="allow_library_conversion"]' => ['unchecked' => TRUE]]
       ],
     ];
     $form['#entity_builders'][] = 'yse_paragraphs_promoter_form_paragraphs_type_form_builder';
@@ -67,7 +66,7 @@ function yse_paragraphs_promoter_form_paragraphs_type_form_alter(&$form, FormSta
  *
  */
 function yse_paragraphs_promoter_form_paragraphs_type_form_builder($entity_type, ParagraphsTypeInterface $type, &$form, FormStateInterface $form_state) {
-  if ($form_state->getValue('create_reusableitem_node')) {
+  if ($form_state->getValue('create_reusableitem_node') && $form_state->getValue('allow_library_conversion')) {
     $type->setThirdPartySetting('paragraphs_library', 'create_reusableitem_node', $form_state->getValue('create_reusableitem_node'));
   }
   else {
@@ -109,13 +108,14 @@ function yse_libraryitem_override_paragraphs_library_item_insert(EntityInterface
     return;
   }
 
+  $target_bundles = array();
   //check receiving node type for parent bundle match on the promoter entity_reference field
   $node_fielddefs = \Drupal::service('entity_field.manager')->getFieldDefinitions('node', 'yse_resuable_item');
   if (isset($node_fielddefs['field_promoter_nref'])) {
     $handler_settings = $node_fielddefs['field_promoter_nref']->getSetting('handler_settings');
-    $target_bundles = array_values($handler_settings['target_bundles'])
+    $target_bundles = array_values($handler_settings['target_bundles']);
   }
-  if (in_array($target_bundles, $mamatype)){
+  if (empty($target_bundles) || in_array($mamatype, $target_bundles)){
 
     // Get the alias of the referer, should be like node/6286/edit
     // hopefully fails silently when libitem is created from the 'Add new' button under Content
