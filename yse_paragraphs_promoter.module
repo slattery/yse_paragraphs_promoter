@@ -77,11 +77,10 @@ function yse_paragraphs_promoter_form_paragraphs_type_form_builder($entity_type,
 
 
 function yse_paragraphs_promoter_paragraphs_library_item_predelete(EntityInterface $library_item) {
-
   $nids = array_values(
     \Drupal::entityQuery('node')->accessCheck(FALSE)
-    ->condition('status', 1)->condition('type', 'yse_feature_store')
-    ->condition('field_stored_feature_set.entity:paragraph.field_reusable_paragraph.entity:paragraphs_library_item.id', $library_item->id())
+    ->condition('status', 1)->condition('type', 'yse_reusable_item')
+    ->condition('field_reusable_paragraph.entity:paragraph.field_reusable_paragraph.entity:paragraphs_library_item.id', $library_item->id())
     ->execute());
 
   foreach ($nids as $nid){
@@ -90,13 +89,14 @@ function yse_paragraphs_promoter_paragraphs_library_item_predelete(EntityInterfa
     if ($entity->isPublished()) {
       $t = $entity->label();
       $entity->setUnpublished();
+      $entity->field_reusable_paragraph->removeItem(0);
       $entity->save();
       \Drupal::service('messenger')->addMessage("Library Item Deleted, Node '{$t}' ({$nid}) has been unpublished.");
     }
   }
 }
 
-function yse_libraryitem_override_paragraphs_library_item_insert(EntityInterface $library_item) {
+function yse_paragraphs_promoter_paragraphs_library_item_insert(EntityInterface $library_item) {
   // Check that this paragraph type wants a ResuableItem node via getThirdPartySetting
   // $library_item->paragraphs->entity
   $mamatype = $library_item->paragraphs->entity->get('parent_type')->value;
