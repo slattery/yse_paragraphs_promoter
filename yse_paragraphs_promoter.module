@@ -185,9 +185,8 @@ function yse_paragraphs_promoter_entity_base_field_info_alter(&$fields, EntityTy
 
 
 // cache concerns include promoter node save
-// we are bogarting jumper here.  maybe this should be in jumper...
 function yse_paragraphs_promoter_preprocess_paragraph(&$variables) {
-  //if ($variables['paragraph']->getType() == 'document_wysiwyg_section'){
+
   if ($variables['paragraph']->get('parent_type')->value == 'paragraphs_library_item') {
     if (!empty($variables['paragraph']->_referringItem)) {
       //get promoter entity
@@ -219,22 +218,4 @@ function yse_paragraphs_promoter_preprocess_paragraph(&$variables) {
       }
     }
   }
-  //}
-}
-
-function yse_paragraphs_promoter_theme_suggestions_field_multiple_value_form_alter(&$suggestions, array $variables) {
-  if (isset($variables['element']['#attributes']['data-drupal-selector'])) {
-    if ($variables['element']['#attributes']['data-drupal-selector'] == 'edit-field-reusable-paragraph') {
-      $suggestions[] = 'field_multiple_value_form__field_embedded_paragraphs';
-    }
-  }
-}
-
-function yse_paragraphs_adopter_theme() {
-  return [
-    'field_multiple_value_form__field_embedded_paragraphs' => [
-      'template' => 'field-multiple-value-form--field-embedded-paragraphs',
-      'base hook' => 'field_multiple_value_form',
-    ]
-  ];
 }
