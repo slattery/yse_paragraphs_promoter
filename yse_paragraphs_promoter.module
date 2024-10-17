@@ -2,6 +2,9 @@
 
 use Drupal\Component\Utility\Html;
 use Drupal\Core\Entity\EntityInterface;
+use Drupal\Core\Entity\EntityTypeInterface;
+use Drupal\Core\Field\BaseFieldDefinition;
+use Drupal\Core\Field\FieldStorageDefinitionInterface;
 use Drupal\Core\Form\FormStateInterface;
 use Drupal\Core\Render\BubbleableMetadata;
 use Drupal\Core\Routing\RouteMatchInterface;
@@ -10,6 +13,7 @@ use Drupal\field\Entity\FieldConfig;
 use Drupal\paragraphs\Entity\Paragraph;
 use Drupal\paragraphs\ParagraphInterface;
 use Drupal\paragraphs\ParagraphsTypeInterface;
+
 
 /**
  * Implements hook_help().
@@ -79,11 +83,11 @@ function yse_paragraphs_promoter_form_paragraphs_type_form_builder($entity_type,
 function yse_paragraphs_promoter_paragraphs_library_item_predelete(EntityInterface $library_item) {
   $nids = array_values(
     \Drupal::entityQuery('node')->accessCheck(FALSE)
-    ->condition('status', 1)->condition('type', 'yse_reusable_item')
-    ->condition('field_reusable_paragraph.entity:paragraph.field_reusable_paragraph.entity:paragraphs_library_item.id', $library_item->id())
-    ->execute());
+      ->condition('status', 1)->condition('type', 'yse_reusable_item')
+      ->condition('field_reusable_paragraph.entity:paragraph.field_reusable_paragraph.entity:paragraphs_library_item.id', $library_item->id())
+      ->execute());
 
-  foreach ($nids as $nid){
+  foreach ($nids as $nid) {
     $storage = \Drupal::entityTypeManager()->getStorage('node');
     $entity = $storage->load($nid);
     if ($entity->isPublished()) {
@@ -104,52 +108,133 @@ function yse_paragraphs_promoter_paragraphs_library_item_insert(EntityInterface 
   $makenode = $library_item->paragraphs->entity->getParagraphType()->getThirdPartySetting('paragraphs_library', 'create_reusableitem_node', FALSE);
 
   //check to see that this para type allows node creation
-  if (!isset($makenode)){
+  if (!isset($makenode)) {
     return;
   }
 
-  $target_bundles = array();
-  //check receiving node type for parent bundle match on the promoter entity_reference field
-  $node_fielddefs = \Drupal::service('entity_field.manager')->getFieldDefinitions('node', 'yse_resuable_item');
-  if (isset($node_fielddefs['field_promoter_nref'])) {
-    $handler_settings = $node_fielddefs['field_promoter_nref']->getSetting('handler_settings');
-    $target_bundles = array_values($handler_settings['target_bundles']);
-  }
-  if (empty($target_bundles) || in_array($mamatype, $target_bundles)){
+  $paranode = \Drupal::entityTypeManager()->getStorage('node')->create(
+    [
+      'type' => 'yse_reusable_item',
+      'title' => $library_item->label(),
+    ]
+  );
+  $paragraph_item = Paragraph::create([
+    'type' => 'from_library',
+    'field_reusable_paragraph' => $library_item,
+  ]);
 
-    // Get the alias of the referer, should be like node/6286/edit
-    // hopefully fails silently when libitem is created from the 'Add new' button under Content
-    $referer = \Drupal::request()->headers->get('referer');
+  $paranode->field_reusable_paragraph->appendItem($paragraph_item);
+  $paranode->save();
+  \Drupal::service('messenger')->addMessage("Library item promoted, a new node has been created to use in reference fields. Please hit the SAVE button on the form to complete the process.");
+}
 
-    $promoter = false;
-    $alias = parse_url($referer, PHP_URL_PATH);
 
-    if (!empty($alias)) {
-      $url = Url::fromUri('internal:' . $alias);
-      $promoter = $url->getRouteParameters()['node'];
-    }
-    //TEST try to load when isNew, see if we get type...
+function yse_paragraphs_promoter_entity_base_field_info(EntityTypeInterface $entity_type) {
+  if ($entity_type->id() === 'paragraphs_library_item') {
+    $stored_promoter = \Drupal::service('entity.definition_update_manager')->getFieldStorageDefinition('promoter', $entity_type->id());
 
-    //do we need to enforce a label w mapping?
-    $paranode = \Drupal::entityTypeManager()->getStorage('node')->create(
-      [
-        'type' => 'yse_reusable_item',
-        'title' => $library_item->label(),
-      ]
-    );
-    $paragraph_item = Paragraph::create([
-        'type' => 'from_library',
-        'field_reusable_paragraph' => $library_item,
-    ]);
+    //even though this is the def I get back, I don't get the promoter field back as a field without reloading the def.
+    //if (empty($stored_promoter)) {
+    $fields['promoter'] = BaseFieldDefinition::create('entity_reference')
+      ->setLabel(t('Promoter Node'))
+      ->setDescription(t('The node that promoted this item.'))
+      ->setRevisionable(TRUE)
+      ->setSetting('target_type', 'node')
+      ->setSetting('handler', 'default:node')
+      ->setDefaultValueCallback('Drupal\yse_paragraphs_promoter\Service\Promoter::getPromoterNid')
+      ->setDisplayOptions('view', array(
+        'region' => 'hidden',
+        'weight' => 0,
+      ))
+      ->setDisplayOptions('form', array(
+        'region' => 'hidden',
+        'weight' => 0,
+      ))
+      ->setDisplayConfigurable('form', TRUE)
+      ->setDisplayConfigurable('view', TRUE);
 
-    $paranode->field_reusable_paragraph->appendItem($paragraph_item);
-    $paranode->field_promoter_nref->setValue($promoter);
-    $paranode->save();
-    \Drupal::service('messenger')->addMessage("Library item promoted, a new node has been created to use in reference fields.");
-  }
-  else {
-    \Drupal::service('messenger')->addWarning("Library item promoted, no node has been created, parent node type {$mamatype} not supported on the Promoter field of the Reusable Item node type.");
+    \Drupal::service('entity.definition_update_manager')->installFieldStorageDefinition('promoter', $entity_type->id(), 'yse_paragraphs_promoter', $fields['promoter']);
+    $stored_def = \Drupal::service('entity.definition_update_manager')->getFieldStorageDefinition('promoter', $entity_type->id());
+    \Drupal::service('entity.definition_update_manager')->updateFieldStorageDefinition($stored_def);
+    \Drupal::service('entity_type.manager')->clearCachedDefinitions();
+    \Drupal::service('entity.definition_update_manager')->updateEntityType($entity_type);
+
+    return $fields;
+    //  }
   }
 }
 
 
+/**
+ * Implements hook_entity_base_field_info_alter().
+ */
+function yse_paragraphs_promoter_entity_base_field_info_alter(&$fields, EntityTypeInterface $entity_type) {
+  if ($entity_type->id() === 'paragraphs_library_item') {
+    // Check if the field we want to modify exists.
+    if (isset($fields['promoter'])) {
+      $existing_bundles = array_keys(\Drupal::service('entity_type.bundle.info')->getBundleInfo('node'));
+      // Get the current field settings.
+      $settings = $fields['promoter']->getSettings();
+      // Update the target_bundles setting.
+      $settings['handler_settings']['target_bundles'] = array_combine($existing_bundles, $existing_bundles);
+      // Apply the updated settings back to the field.
+      $fields['promoter']->setSettings($settings);
+    }
+  }
+}
+
+
+// cache concerns include promoter node save
+// we are bogarting jumper here.  maybe this should be in jumper...
+function yse_paragraphs_promoter_preprocess_paragraph(&$variables) {
+  //if ($variables['paragraph']->getType() == 'document_wysiwyg_section'){
+  if ($variables['paragraph']->get('parent_type')->value == 'paragraphs_library_item') {
+    if (!empty($variables['paragraph']->_referringItem)) {
+      //get promoter entity
+      if ($variables['paragraph']->_referringItem->getRoot()->get('promoter')) {
+        $promoter = $variables['paragraph']->_referringItem->getRoot()->get('promoter')->entity;
+      }
+      //find out if this is the primary reusable_item (this is different from share_path)
+      //next check that this is not nested, but it the primary libitem for the field
+      //first step is the libitem
+      $p = $variables['paragraph']->_referringItem->getRoot()->getEntity();
+      //second would be a 'from_libary' paragraph in a field
+      if (!empty($p) && $p->getEntityTypeId() == 'paragraphs_library_item') {
+        $pp = $p->_referringItem->getRoot()->getEntity();
+      }
+      if (!empty($pp) && $pp->getEntityTypeId() == 'paragraph' && $pp->getType() == 'from_library') {
+        //third would be a node if we were in that position.
+        $ppp = $pp->_referringItem->getRoot()->getEntity();
+      }
+      //check that we aren't in a standalone card which would count as nesting
+      //if we are at the top, and not in a card stack, there should be no more fields to traverse
+      //we could check for nid match at the route and here as well but we could have self in stack
+      if (!empty($ppp) && $ppp->getEntityTypeId() == 'node' && $ppp->getType() == 'yse_reusable_item') {
+        $variables['reusable_remote'] = $ppp->_referringItem ? FALSE : TRUE;
+      }
+
+      if ($promoter) {
+        $variables['promoter_path'] = $promoter->toUrl()->toString();
+        $variables['promoter_title'] = $promoter->getTitle();
+      }
+    }
+  }
+  //}
+}
+
+function yse_paragraphs_promoter_theme_suggestions_field_multiple_value_form_alter(&$suggestions, array $variables) {
+  if (isset($variables['element']['#attributes']['data-drupal-selector'])) {
+    if ($variables['element']['#attributes']['data-drupal-selector'] == 'edit-field-reusable-paragraph') {
+      $suggestions[] = 'field_multiple_value_form__field_embedded_paragraphs';
+    }
+  }
+}
+
+function yse_paragraphs_adopter_theme() {
+  return [
+    'field_multiple_value_form__field_embedded_paragraphs' => [
+      'template' => 'field-multiple-value-form--field-embedded-paragraphs',
+      'base hook' => 'field_multiple_value_form',
+    ]
+  ];
+}

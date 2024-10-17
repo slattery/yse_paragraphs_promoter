@@ -4,7 +4,6 @@ status: true
 dependencies:
   config:
     - field.field.node.yse_reusable_item.body
-    - field.field.node.yse_reusable_item.field_promoter_nref
     - field.field.node.yse_reusable_item.field_reusable_paragraph
     - node.type.yse_reusable_item
   module:
@@ -15,13 +14,6 @@ targetEntityType: node
 bundle: yse_reusable_item
 mode: default
 content:
-  field_promoter_nref:
-    type: entity_reference_entity_id
-    label: hidden
-    settings: {  }
-    third_party_settings: {  }
-    weight: 2
-    region: content
   field_reusable_paragraph:
     type: entity_reference_revisions_entity_view
     label: hidden

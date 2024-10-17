@@ -1,0 +1,3 @@
+services:
+  yse_paragraphs_promoter.promoter:
+    class: Drupal\yse_paragraphs_promoter\Service\Promoter
