@@ -4,7 +4,6 @@ status: true
 dependencies:
   config:
     - field.field.node.yse_reusable_item.body
-    - field.field.node.yse_reusable_item.field_promoter_nref
     - field.field.node.yse_reusable_item.field_reusable_paragraph
     - node.type.yse_reusable_item
   module:
@@ -31,16 +30,6 @@ content:
     weight: 3
     region: content
     settings: {  }
-    third_party_settings: {  }
-  field_promoter_nref:
-    type: entity_reference_autocomplete
-    weight: 11
-    region: content
-    settings:
-      match_operator: CONTAINS
-      match_limit: 10
-      size: 60
-      placeholder: ''
     third_party_settings: {  }
   field_reusable_paragraph:
     type: inline_entity_form_complex_table_view_mode
